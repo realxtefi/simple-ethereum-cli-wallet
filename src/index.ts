@@ -185,6 +185,22 @@ class SimpleWallet {
     const account = this.getAccountFromSeed(seedPhrase, index);
     return account.address;
   }
+
+  /**
+   * Get private key from seed phrase and index
+   */
+  getPrivateKey(seedPhrase: string, index: number = 0): string {
+    const account = this.getAccountFromSeed(seedPhrase, index);
+    const hdKey = account.getHdKey();
+    if (!hdKey.privateKey) {
+      throw new Error("Failed to derive private key");
+    }
+    // Convert private key to hex string
+    const privateKeyBuffer = Buffer.isBuffer(hdKey.privateKey)
+      ? hdKey.privateKey
+      : Buffer.from(hdKey.privateKey);
+    return `0x${privateKeyBuffer.toString("hex")}`;
+  }
 }
 
 import * as readline from "readline";
@@ -217,7 +233,8 @@ class InteractiveCLI {
     console.log("  2. Check balance");
     console.log("  3. Transfer ETH");
     console.log("  4. Get wallet address");
-    console.log("  5. Show menu");
+    console.log("  5. Get private key");
+    console.log("  6. Show menu");
     console.log("  0. Exit\n");
   }
 
@@ -354,11 +371,53 @@ class InteractiveCLI {
     }
   }
 
+  async handlePrivateKey() {
+    try {
+      const seedPhrases =
+        process.env.PHRASES?.split(/[;\n]/)
+          .map((p) => p.trim())
+          .filter((p) => p.length > 0) || [];
+
+      if (seedPhrases.length === 0) {
+        console.error("❌ No seed phrase found in PHRASES");
+        return;
+      }
+
+      let seedPhrase = seedPhrases[0];
+      if (seedPhrases.length > 1) {
+        console.log("\nAvailable seed phrases:");
+        seedPhrases.forEach((s, i) => {
+          const preview = s.split(" ").slice(0, 3).join(" ") + "...";
+          console.log(`  ${i + 1}. ${preview}`);
+        });
+        const seedIndex = await this.question(
+          "\nSelect seed phrase (1-" + seedPhrases.length + ", default 1): "
+        );
+        const idx = parseInt(seedIndex) - 1;
+        if (idx >= 0 && idx < seedPhrases.length) {
+          seedPhrase = seedPhrases[idx];
+        }
+      }
+
+      const indexStr = await this.question("Enter wallet index (default 0): ");
+      const idx = parseInt(indexStr) || 0;
+      const address = this.wallet.getWalletAddress(seedPhrase, idx);
+      const privateKey = this.wallet.getPrivateKey(seedPhrase, idx);
+      console.log(`\n📍 Wallet address (index ${idx}): ${address}`);
+      console.log(`🔑 Private key (index ${idx}): ${privateKey}`);
+      console.log(
+        "⚠️  WARNING: Keep this private key secure! Never share it with anyone."
+      );
+    } catch (error: any) {
+      console.error(`❌ Error: ${error.message}`);
+    }
+  }
+
   async run() {
     this.showMenu();
 
     while (true) {
-      const answer = await this.question("Select command (0-5): ");
+      const answer = await this.question("Select command (0-6): ");
 
       switch (answer.trim()) {
         case "1":
@@ -374,6 +433,9 @@ class InteractiveCLI {
           await this.handleAddress();
           break;
         case "5":
+          await this.handlePrivateKey();
+          break;
+        case "6":
           this.showMenu();
           break;
         case "0":
@@ -383,7 +445,7 @@ class InteractiveCLI {
           this.rl.close();
           return;
         default:
-          console.log("❌ Invalid command. Type 5 to see menu or 0 to exit.");
+          console.log("❌ Invalid command. Type 6 to see menu or 0 to exit.");
       }
     }
   }
@@ -477,6 +539,23 @@ async function main() {
         console.log(`Wallet address (index ${idx}): ${addr}`);
         break;
 
+      case "privatekey":
+      case "key":
+        const seedForKey = process.env.PHRASES?.split(/[;\n]/)[0]?.trim();
+        if (!seedForKey) {
+          console.error("No seed phrase found in PHRASES");
+          process.exit(1);
+        }
+        const keyIdx = parseInt(args[1] || "0");
+        const addressForKey = wallet.getWalletAddress(seedForKey, keyIdx);
+        const privateKey = wallet.getPrivateKey(seedForKey, keyIdx);
+        console.log(`Wallet address (index ${keyIdx}): ${addressForKey}`);
+        console.log(`Private key (index ${keyIdx}): ${privateKey}`);
+        console.log(
+          "⚠️  WARNING: Keep this private key secure! Never share it with anyone."
+        );
+        break;
+
       default:
         console.log(`
 Simple Ethereum Wallet CLI
@@ -487,6 +566,7 @@ Usage:
   pnpm start balance <address>    - Check balance of an address
   pnpm start transfer <index> <to> <amount> - Transfer ETH
   pnpm start address [index]      - Get wallet address (default index: 0)
+  pnpm start privatekey [index]   - Get private key (default index: 0)
 
 Examples:
   pnpm start
@@ -494,6 +574,7 @@ Examples:
   pnpm start balance 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb
   pnpm start transfer 0 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb 0.1
   pnpm start address 0
+  pnpm start privatekey 0
         `);
     }
   } catch (error: any) {
