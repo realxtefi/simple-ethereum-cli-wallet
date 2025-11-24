@@ -12,53 +12,89 @@ A simple Node.js/TypeScript application for managing Ethereum wallets using 12-w
 ## Setup
 
 1. Install dependencies:
+
 ```bash
 pnpm install
 ```
 
 2. Create a `.env` file (copy from `.env.example`):
+
 ```bash
 cp .env.example .env
 ```
 
 3. Edit `.env` and add your configuration:
+
 ```
 RPC_URL=https://eth.llamarpc.com
 PHRASES=word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12
 ```
 
 You can add multiple seed phrases by separating them with semicolons or newlines:
+
 ```
 PHRASES=phrase1 word1 word2...; phrase2 word1 word2...
 ```
 
 ## Usage
 
-### List wallets with balance
+### Interactive Mode (Recommended)
+
+Start the interactive CLI menu:
+
+```bash
+pnpm start
+```
+
+This will show a menu with numbered commands:
+
+- `1` - List wallets with balance
+- `2` - Check balance
+- `3` - Transfer ETH
+- `4` - Get wallet address
+- `5` - Show menu
+- `0` - Exit
+
+The interactive mode prompts for all required inputs and returns to the menu after each command, making it easy to use like a Telegram bot interface.
+
+### Command-Line Mode
+
+You can also use commands directly:
+
+#### List wallets with balance
+
 Scans the first 20 addresses from each seed phrase and shows those with balance:
+
 ```bash
 pnpm start list
 ```
 
-### Check balance
+#### Check balance
+
 Check the balance of a specific address:
+
 ```bash
 pnpm start balance 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb
 ```
 
-### Transfer ETH
+#### Transfer ETH
+
 Transfer ETH from a wallet (uses first seed phrase):
+
 ```bash
 pnpm start transfer <walletIndex> <toAddress> <amountEth>
 ```
 
 Example:
+
 ```bash
 pnpm start transfer 0 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb 0.1
 ```
 
-### Get wallet address
+#### Get wallet address
+
 Get the address for a specific wallet index:
+
 ```bash
 pnpm start address [index]
 ```
@@ -71,4 +107,3 @@ pnpm start address [index]
 
 - Node.js 18+
 - An Ethereum RPC endpoint (public or private)
-

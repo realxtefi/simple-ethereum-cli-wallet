@@ -141,13 +141,6 @@ class SimpleWallet {
       );
     }
 
-    // Create wallet client for sending transactions
-    const walletClient = createWalletClient({
-      account,
-      chain: mainnet,
-      transport: http(this.rpcUrl),
-    });
-
     // Estimate gas
     const gasPrice = await this.publicClient.getGasPrice();
     const estimatedGas = 21000n; // Standard ETH transfer
@@ -160,8 +153,16 @@ class SimpleWallet {
       );
     }
 
+    // Create wallet client for sending transactions
+    const walletClient = createWalletClient({
+      account,
+      chain: mainnet,
+      transport: http(this.rpcUrl),
+    });
+
     // Send transaction
     const hash = await walletClient.sendTransaction({
+      account,
       to: toAddress as `0x${string}`,
       value: parseEther(amountEth),
     });
@@ -186,7 +187,213 @@ class SimpleWallet {
   }
 }
 
-// CLI Interface
+import * as readline from "readline";
+
+// Interactive CLI Interface
+class InteractiveCLI {
+  private rl: readline.Interface;
+  private wallet: SimpleWallet;
+
+  constructor(wallet: SimpleWallet) {
+    this.wallet = wallet;
+    this.rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+  }
+
+  private question(prompt: string): Promise<string> {
+    return new Promise((resolve) => {
+      this.rl.question(prompt, resolve);
+    });
+  }
+
+  private showMenu() {
+    console.log("\n╔════════════════════════════════════════╗");
+    console.log("║    Simple Ethereum Wallet CLI          ║");
+    console.log("╚════════════════════════════════════════╝\n");
+    console.log("Commands:");
+    console.log("  1. List wallets with balance");
+    console.log("  2. Check balance");
+    console.log("  3. Transfer ETH");
+    console.log("  4. Get wallet address");
+    console.log("  5. Show menu");
+    console.log("  0. Exit\n");
+  }
+
+  async handleList() {
+    try {
+      console.log("\n📊 Scanning wallets for balances...\n");
+      const wallets = await this.wallet.listWalletsWithBalance();
+
+      if (wallets.length === 0) {
+        console.log("❌ No wallets with balance found.");
+      } else {
+        console.log(`✅ Found ${wallets.length} wallet(s) with balance:\n`);
+        wallets.forEach((w, idx) => {
+          console.log(`${idx + 1}. Address: ${w.address}`);
+          console.log(`   Balance: ${w.balanceEth} ETH`);
+          console.log(`   Index: ${w.index}`);
+          console.log(`   Seed: ${w.seedPhrase}\n`);
+        });
+      }
+    } catch (error: any) {
+      console.error(`❌ Error: ${error.message}`);
+    }
+  }
+
+  async handleBalance() {
+    try {
+      const address = await this.question("Enter address: ");
+      if (!address.trim()) {
+        console.log("❌ Address cannot be empty");
+        return;
+      }
+      console.log("\n⏳ Checking balance...");
+      const balance = await this.wallet.checkBalance(address.trim());
+      console.log(`\n💰 Balance: ${balance} ETH`);
+    } catch (error: any) {
+      console.error(`❌ Error: ${error.message}`);
+    }
+  }
+
+  async handleTransfer() {
+    try {
+      const seedPhrases =
+        process.env.PHRASES?.split(/[;\n]/)
+          .map((p) => p.trim())
+          .filter((p) => p.length > 0) || [];
+
+      if (seedPhrases.length === 0) {
+        console.error("❌ No seed phrase found in PHRASES");
+        return;
+      }
+
+      let seedPhrase = seedPhrases[0];
+      if (seedPhrases.length > 1) {
+        console.log("\nAvailable seed phrases:");
+        seedPhrases.forEach((s, i) => {
+          const preview = s.split(" ").slice(0, 3).join(" ") + "...";
+          console.log(`  ${i + 1}. ${preview}`);
+        });
+        const seedIndex = await this.question(
+          "\nSelect seed phrase (1-" + seedPhrases.length + ", default 1): "
+        );
+        const idx = parseInt(seedIndex) - 1;
+        if (idx >= 0 && idx < seedPhrases.length) {
+          seedPhrase = seedPhrases[idx];
+        }
+      }
+
+      const walletIndexStr = await this.question(
+        "Enter wallet index (default 0): "
+      );
+      const walletIndex = parseInt(walletIndexStr) || 0;
+
+      const toAddress = await this.question("Enter recipient address: ");
+      if (!toAddress.trim()) {
+        console.log("❌ Recipient address cannot be empty");
+        return;
+      }
+
+      const amount = await this.question("Enter amount (ETH): ");
+      if (!amount.trim()) {
+        console.log("❌ Amount cannot be empty");
+        return;
+      }
+
+      console.log(
+        `\n⏳ Transferring ${amount} ETH from wallet index ${walletIndex} to ${toAddress}...`
+      );
+      const txHash = await this.wallet.transfer(
+        seedPhrase,
+        walletIndex,
+        toAddress.trim(),
+        amount.trim()
+      );
+      console.log(`\n✅ Transfer successful! Transaction hash: ${txHash}`);
+    } catch (error: any) {
+      console.error(`❌ Error: ${error.message}`);
+    }
+  }
+
+  async handleAddress() {
+    try {
+      const seedPhrases =
+        process.env.PHRASES?.split(/[;\n]/)
+          .map((p) => p.trim())
+          .filter((p) => p.length > 0) || [];
+
+      if (seedPhrases.length === 0) {
+        console.error("❌ No seed phrase found in PHRASES");
+        return;
+      }
+
+      let seedPhrase = seedPhrases[0];
+      if (seedPhrases.length > 1) {
+        console.log("\nAvailable seed phrases:");
+        seedPhrases.forEach((s, i) => {
+          const preview = s.split(" ").slice(0, 3).join(" ") + "...";
+          console.log(`  ${i + 1}. ${preview}`);
+        });
+        const seedIndex = await this.question(
+          "\nSelect seed phrase (1-" + seedPhrases.length + ", default 1): "
+        );
+        const idx = parseInt(seedIndex) - 1;
+        if (idx >= 0 && idx < seedPhrases.length) {
+          seedPhrase = seedPhrases[idx];
+        }
+      }
+
+      const indexStr = await this.question("Enter wallet index (default 0): ");
+      const idx = parseInt(indexStr) || 0;
+      const addr = this.wallet.getWalletAddress(seedPhrase, idx);
+      console.log(`\n📍 Wallet address (index ${idx}): ${addr}`);
+    } catch (error: any) {
+      console.error(`❌ Error: ${error.message}`);
+    }
+  }
+
+  async run() {
+    this.showMenu();
+
+    while (true) {
+      const answer = await this.question("Select command (0-5): ");
+
+      switch (answer.trim()) {
+        case "1":
+          await this.handleList();
+          break;
+        case "2":
+          await this.handleBalance();
+          break;
+        case "3":
+          await this.handleTransfer();
+          break;
+        case "4":
+          await this.handleAddress();
+          break;
+        case "5":
+          this.showMenu();
+          break;
+        case "0":
+        case "exit":
+        case "quit":
+          console.log("\n👋 Goodbye!\n");
+          this.rl.close();
+          return;
+        default:
+          console.log("❌ Invalid command. Type 5 to see menu or 0 to exit.");
+      }
+    }
+  }
+
+  close() {
+    this.rl.close();
+  }
+}
+
+// CLI Interface - supports both interactive and command-line modes
 async function main() {
   const args = process.argv.slice(2);
   const command = args[0];
@@ -194,6 +401,14 @@ async function main() {
   try {
     const wallet = new SimpleWallet();
 
+    // If no command provided, start interactive mode
+    if (!command) {
+      const cli = new InteractiveCLI(wallet);
+      await cli.run();
+      return;
+    }
+
+    // Command-line mode (backward compatible)
     switch (command) {
       case "list":
         console.log("Scanning wallets for balances...\n");
@@ -267,12 +482,14 @@ async function main() {
 Simple Ethereum Wallet CLI
 
 Usage:
-  pnpm start list                    - List all wallets with balance
-  pnpm start balance <address>       - Check balance of an address
-  pnpm start transfer <index> <to> <amount> - Transfer ETH (uses first seed phrase)
-  pnpm start address [index]         - Get wallet address (default index: 0)
+  pnpm start                      - Start interactive mode
+  pnpm start list                 - List all wallets with balance
+  pnpm start balance <address>    - Check balance of an address
+  pnpm start transfer <index> <to> <amount> - Transfer ETH
+  pnpm start address [index]      - Get wallet address (default index: 0)
 
 Examples:
+  pnpm start
   pnpm start list
   pnpm start balance 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb
   pnpm start transfer 0 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb 0.1
