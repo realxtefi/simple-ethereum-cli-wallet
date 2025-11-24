@@ -27,14 +27,14 @@ cp .env.example .env
 
 ```
 RPC_URL=https://eth.llamarpc.com
-PHRASES=word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12
+PHRASES_0=word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12
+PHRASES_1=word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12
+PHRASES_2=word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12
 ```
 
-You can add multiple seed phrases by separating them with semicolons or newlines:
+You can add as many seed phrases as needed by incrementing the number (PHRASES_0, PHRASES_1, PHRASES_2, etc.).
 
-```
-PHRASES=phrase1 word1 word2...; phrase2 word1 word2...
-```
+**Note:** The old `PHRASES` format (with semicolons or newlines) is still supported for backward compatibility, but the numbered format is recommended.
 
 ## Usage
 
@@ -79,24 +79,48 @@ pnpm start balance 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb
 
 #### Transfer ETH
 
-Transfer ETH from a wallet (uses first seed phrase):
+Transfer ETH from a wallet:
 
 ```bash
+# Old format (uses first seed phrase, PHRASES_0)
 pnpm start transfer <walletIndex> <toAddress> <amountEth>
+
+# New format (specify which seed phrase to use)
+pnpm start transfer <phraseIndex> <walletIndex> <toAddress> <amountEth>
 ```
 
-Example:
+Examples:
 
 ```bash
+# Use first seed phrase (PHRASES_0), wallet index 0
 pnpm start transfer 0 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb 0.1
+
+# Use second seed phrase (PHRASES_1), wallet index 0
+pnpm start transfer 1 0 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb 0.1
 ```
 
 #### Get wallet address
 
-Get the address for a specific wallet index:
+Get the address for a specific wallet:
 
 ```bash
-pnpm start address [index]
+# Old format (uses first seed phrase)
+pnpm start address [walletIndex]
+
+# New format (specify seed phrase and wallet index)
+pnpm start address [phraseIndex] [walletIndex]
+```
+
+#### Get private key
+
+Get the private key for a specific wallet:
+
+```bash
+# Old format (uses first seed phrase)
+pnpm start privatekey [walletIndex]
+
+# New format (specify seed phrase and wallet index)
+pnpm start privatekey [phraseIndex] [walletIndex]
 ```
 
 ## Security Warning

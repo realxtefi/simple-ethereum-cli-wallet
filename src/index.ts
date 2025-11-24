@@ -31,25 +31,42 @@ class SimpleWallet {
       throw new Error("RPC_URL is not set in .env file");
     }
 
-    const phrases = process.env.PHRASES;
-    if (!phrases) {
-      throw new Error("PHRASES is not set in .env file");
-    }
-
     this.rpcUrl = rpcUrl;
     this.publicClient = createPublicClient({
       chain: mainnet,
       transport: http(rpcUrl),
     });
 
-    // Parse seed phrases - support multiple phrases separated by newlines or semicolons
-    this.seedPhrases = phrases
-      .split(/[;\n]/)
-      .map((p) => p.trim())
-      .filter((p) => p.length > 0);
+    // Parse seed phrases from numbered environment variables (PHRASES_0, PHRASES_1, etc.)
+    this.seedPhrases = [];
+    let index = 0;
+    while (true) {
+      const phraseKey = `PHRASES_${index}`;
+      const phrase = process.env[phraseKey];
+
+      if (!phrase || phrase.trim().length === 0) {
+        break;
+      }
+
+      this.seedPhrases.push(phrase.trim());
+      index++;
+    }
+
+    // Fallback to legacy PHRASES format for backward compatibility
+    if (this.seedPhrases.length === 0) {
+      const phrases = process.env.PHRASES;
+      if (phrases) {
+        this.seedPhrases = phrases
+          .split(/[;\n]/)
+          .map((p) => p.trim())
+          .filter((p) => p.length > 0);
+      }
+    }
 
     if (this.seedPhrases.length === 0) {
-      throw new Error("No valid seed phrases found in PHRASES");
+      throw new Error(
+        "No valid seed phrases found. Please set PHRASES_0, PHRASES_1, etc. in .env file"
+      );
     }
   }
 
@@ -201,6 +218,13 @@ class SimpleWallet {
       : Buffer.from(hdKey.privateKey);
     return `0x${privateKeyBuffer.toString("hex")}`;
   }
+
+  /**
+   * Get all seed phrases
+   */
+  getSeedPhrases(): string[] {
+    return [...this.seedPhrases];
+  }
 }
 
 import * as readline from "readline";
@@ -276,13 +300,10 @@ class InteractiveCLI {
 
   async handleTransfer() {
     try {
-      const seedPhrases =
-        process.env.PHRASES?.split(/[;\n]/)
-          .map((p) => p.trim())
-          .filter((p) => p.length > 0) || [];
+      const seedPhrases = this.wallet.getSeedPhrases();
 
       if (seedPhrases.length === 0) {
-        console.error("❌ No seed phrase found in PHRASES");
+        console.error("❌ No seed phrase found");
         return;
       }
 
@@ -336,13 +357,10 @@ class InteractiveCLI {
 
   async handleAddress() {
     try {
-      const seedPhrases =
-        process.env.PHRASES?.split(/[;\n]/)
-          .map((p) => p.trim())
-          .filter((p) => p.length > 0) || [];
+      const seedPhrases = this.wallet.getSeedPhrases();
 
       if (seedPhrases.length === 0) {
-        console.error("❌ No seed phrase found in PHRASES");
+        console.error("❌ No seed phrase found");
         return;
       }
 
@@ -373,13 +391,10 @@ class InteractiveCLI {
 
   async handlePrivateKey() {
     try {
-      const seedPhrases =
-        process.env.PHRASES?.split(/[;\n]/)
-          .map((p) => p.trim())
-          .filter((p) => p.length > 0) || [];
+      const seedPhrases = this.wallet.getSeedPhrases();
 
       if (seedPhrases.length === 0) {
-        console.error("❌ No seed phrase found in PHRASES");
+        console.error("❌ No seed phrase found");
         return;
       }
 
@@ -500,22 +515,41 @@ async function main() {
         break;
 
       case "transfer":
-        const seedPhrase = process.env.PHRASES?.split(/[;\n]/)[0]?.trim();
-        if (!seedPhrase) {
-          console.error("No seed phrase found in PHRASES");
+        const seedPhrases = wallet.getSeedPhrases();
+        if (seedPhrases.length === 0) {
+          console.error("No seed phrase found");
           process.exit(1);
         }
-        const walletIndex = parseInt(args[1] || "0");
-        const toAddress = args[2];
-        const amount = args[3];
+
+        // Support both formats:
+        // Old: transfer <walletIndex> <toAddress> <amount> (uses first phrase)
+        // New: transfer <phraseIndex> <walletIndex> <toAddress> <amount>
+        let phraseIndex = 0;
+        let walletIndex: number;
+        let toAddress: string;
+        let amount: string;
+
+        if (args.length >= 4) {
+          // New format with phrase index
+          phraseIndex = parseInt(args[1] || "0");
+          walletIndex = parseInt(args[2] || "0");
+          toAddress = args[3];
+          amount = args[4];
+        } else {
+          // Old format (backward compatible)
+          walletIndex = parseInt(args[1] || "0");
+          toAddress = args[2];
+          amount = args[3];
+        }
 
         if (!toAddress || !amount) {
           console.error(
-            "Usage: pnpm start transfer <walletIndex> <toAddress> <amountEth>"
+            "Usage: pnpm start transfer [phraseIndex] <walletIndex> <toAddress> <amountEth>"
           );
           process.exit(1);
         }
 
+        const seedPhrase = seedPhrases[phraseIndex] || seedPhrases[0];
         console.log(
           `Transferring ${amount} ETH from wallet index ${walletIndex} to ${toAddress}...`
         );
@@ -529,28 +563,40 @@ async function main() {
         break;
 
       case "address":
-        const seed = process.env.PHRASES?.split(/[;\n]/)[0]?.trim();
-        if (!seed) {
-          console.error("No seed phrase found in PHRASES");
+        const seedPhrasesForAddr = wallet.getSeedPhrases();
+        if (seedPhrasesForAddr.length === 0) {
+          console.error("No seed phrase found");
           process.exit(1);
         }
-        const idx = parseInt(args[1] || "0");
-        const addr = wallet.getWalletAddress(seed, idx);
-        console.log(`Wallet address (index ${idx}): ${addr}`);
+        const phraseIdx = parseInt(args[1] || "0");
+        const walletIdx = parseInt(args[2] || "0");
+        const seedForAddr =
+          seedPhrasesForAddr[phraseIdx] || seedPhrasesForAddr[0];
+        const addr = wallet.getWalletAddress(seedForAddr, walletIdx);
+        console.log(
+          `Wallet address (phrase ${phraseIdx}, wallet ${walletIdx}): ${addr}`
+        );
         break;
 
       case "privatekey":
       case "key":
-        const seedForKey = process.env.PHRASES?.split(/[;\n]/)[0]?.trim();
-        if (!seedForKey) {
-          console.error("No seed phrase found in PHRASES");
+        const seedPhrasesForKey = wallet.getSeedPhrases();
+        if (seedPhrasesForKey.length === 0) {
+          console.error("No seed phrase found");
           process.exit(1);
         }
-        const keyIdx = parseInt(args[1] || "0");
-        const addressForKey = wallet.getWalletAddress(seedForKey, keyIdx);
-        const privateKey = wallet.getPrivateKey(seedForKey, keyIdx);
-        console.log(`Wallet address (index ${keyIdx}): ${addressForKey}`);
-        console.log(`Private key (index ${keyIdx}): ${privateKey}`);
+        const phraseKeyIdx = parseInt(args[1] || "0");
+        const walletKeyIdx = parseInt(args[2] || "0");
+        const seedForKey =
+          seedPhrasesForKey[phraseKeyIdx] || seedPhrasesForKey[0];
+        const addressForKey = wallet.getWalletAddress(seedForKey, walletKeyIdx);
+        const privateKey = wallet.getPrivateKey(seedForKey, walletKeyIdx);
+        console.log(
+          `Wallet address (phrase ${phraseKeyIdx}, wallet ${walletKeyIdx}): ${addressForKey}`
+        );
+        console.log(
+          `Private key (phrase ${phraseKeyIdx}, wallet ${walletKeyIdx}): ${privateKey}`
+        );
         console.log(
           "⚠️  WARNING: Keep this private key secure! Never share it with anyone."
         );
@@ -564,17 +610,17 @@ Usage:
   pnpm start                      - Start interactive mode
   pnpm start list                 - List all wallets with balance
   pnpm start balance <address>    - Check balance of an address
-  pnpm start transfer <index> <to> <amount> - Transfer ETH
-  pnpm start address [index]      - Get wallet address (default index: 0)
-  pnpm start privatekey [index]   - Get private key (default index: 0)
+  pnpm start transfer [phraseIndex] <walletIndex> <to> <amount> - Transfer ETH
+  pnpm start address [phraseIndex] [walletIndex] - Get wallet address (defaults: 0, 0)
+  pnpm start privatekey [phraseIndex] [walletIndex] - Get private key (defaults: 0, 0)
 
 Examples:
   pnpm start
   pnpm start list
   pnpm start balance 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb
-  pnpm start transfer 0 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb 0.1
-  pnpm start address 0
-  pnpm start privatekey 0
+  pnpm start transfer 0 0 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb 0.1
+  pnpm start address 0 0
+  pnpm start privatekey 0 0
         `);
     }
   } catch (error: any) {
